@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciador de Desafios x1 - PUBG Mobile</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --primary: #f2a900; /* Amarelo PUBG */
+            --primary-hover: #d19200;
+            --text-light: #f5f5f5;
+            --text-muted: #aaaaaa;
+            --border: #333333;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        body { background-color: var(--bg-color); color: var(--text-light); padding: 20px; }
+        
+        header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        header h1 { font-size: 2em; text-transform: uppercase; letter-spacing: 2px; }
+        header span { color: var(--primary); }
+
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        @media (max-width: 768px) { .container { grid-template-columns: 1fr; } }
+
+        .panel { background-color: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+        .panel h2 { margin-bottom: 15px; color: var(--primary); font-size: 1.2em; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+
+        input, select, button { width: 100%; padding: 10px; margin-bottom: 10px; background-color: var(--bg-color); border: 1px solid var(--border); color: var(--text-light); border-radius: 4px; outline: none; }
+        input:focus, select:focus { border-color: var(--primary); }
+        
+        button { background-color: var(--primary); color: #000; font-weight: bold; cursor: pointer; text-transform: uppercase; transition: 0.2s; border: none; }
+        button:hover { background-color: var(--primary-hover); }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+
+        .player-list, .draw-list { list-style: none; margin-bottom: 15px; }
+        .player-list li, .draw-list li { display: flex; align-items: center; margin-bottom: 5px; }
+        .player-list li span { width: 30px; color: var(--text-muted); }
+
+        .match-row { display: flex; gap: 10px; align-items: center; margin-bottom: 15px; }
+        .match-row span { font-weight: bold; color: var(--primary); }
+
+        .rounds-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .round-card { background-color: var(--bg-color); border: 1px solid var(--border); padding: 10px; border-radius: 4px; }
+        .round-card h3 { text-align: center; margin-bottom: 10px; color: var(--text-muted); font-size: 1em; }
+        .match-item { display: flex; justify-content: space-between; background-color: #2a2a2a; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 0.9em; }
+        
+        .btn-danger { background-color: #cc0000; color: white; margin-top: 20px; }
+        .btn-danger:hover { background-color: #990000; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Torneio x1 <span>Spank Frog</span></h1>
+        <p>Sistema de Sorteio e Pareamento de Desafios</p>
+    </header>
+
+    <div class="container">
+        <!-- Painel de Participantes -->
+        <div class="panel">
+            <h2>1. Registrar Participantes (12 Jogadores)</h2>
+            <ul class="player-list" id="playerList">
+                <!-- Gerado via JS -->
+            </ul>
+            <button onclick="app.savePlayers()">Salvar Participantes</button>
+        </div>
+
+        <!-- Painel de Sorteio -->
+        <div class="panel">
+            <h2>2. Sorteio de Ordem de Escolha</h2>
+            <p style="margin-bottom:10px; font-size:0.9em; color:var(--text-muted);">
+                Gera a ordem aleatória. O 1º da lista tem o direito de desafiar alguém primeiro.
+            </p>
+            <button onclick="app.drawOrder()">Realizar Sorteio</button>
+            <ol class="draw-list" id="drawList" style="margin-top: 15px; padding-left: 20px;">
+                <!-- Gerado via JS -->
+            </ol>
+        </div>
+
+        <!-- Painel de Marcação de Desafios -->
+        <div class="panel" style="grid-column: 1 / -1;">
+            <h2>3. Registrar Desafio x1</h2>
+            <div class="match-row">
+                <select id="roundSelect">
+                    <option value="1">Rodada 1</option>
+                    <option value="2">Rodada 2</option>
+                    <option value="3">Rodada 3</option>
+                    <option value="4">Rodada 4</option>
+                </select>
+                <select id="player1Select"><option value="">Desafiante...</option></select>
+                <span>VS</span>
+                <select id="player2Select"><option value="">Desafiado...</option></select>
+                <button onclick="app.registerMatch()" style="margin-bottom:0;">Marcar Luta</button>
+            </div>
+        </div>
+
+        <!-- Painel de Rodadas (Tabela) -->
+        <div class="panel" style="grid-column: 1 / -1;">
+            <h2>4. Tabela de Rodadas</h2>
+            <div class="rounds-grid" id="roundsGrid">
+                <!-- Gerado via JS -->
+            </div>
+            <button class="btn-danger" onclick="app.clearAllData()">Resetar Todo o Torneio</button>
+        </div>
+    </div>
+
+    <script>
+        class TournamentManager {
+            constructor() {
+                // Estruturas de dados dinâmicas para gerenciar o estado
+                this.players = JSON.parse(localStorage.getItem('sf_players')) || Array(12).fill('');
+                this.order = JSON.parse(localStorage.getItem('sf_order')) || [];
+                this.matches = JSON.parse(localStorage.getItem('sf_matches')) || { 1: [], 2: [], 3: [], 4: [] };
+                
+                this.initUI();
+            }
+
+            initUI() {
+                this.renderPlayerInputs();
+                this.renderDrawOrder();
+                this.updateSelectOptions();
+                this.renderMatches();
+            }
+
+            renderPlayerInputs() {
+                const list = document.getElementById('playerList');
+                list.innerHTML = '';
+                for (let i = 0; i < 12; i++) {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span>${i + 1}.</span> <input type="text" id="p${i}" value="${this.players[i]}" placeholder="Nome do Jogador ${i + 1}">`;
+                    list.appendChild(li);
+                }
+            }
+
+            savePlayers() {
+                const newPlayers = [];
+                let validCount = 0;
+                for (let i = 0; i < 12; i++) {
+                    const val = document.getElementById(`p${i}`).value.trim();
+                    newPlayers.push(val);
+                    if (val) validCount++;
+                }
+                
+                if (validCount < 12) {
+                    alert("Atenção: Preencha todos os 12 participantes para o sistema funcionar corretamente.");
+                }
+
+                this.players = newPlayers;
+                localStorage.setItem('sf_players', JSON.stringify(this.players));
+                this.updateSelectOptions();
+                alert("Participantes salvos!");
+            }
+
+            // Algoritmo de embaralhamento de Fisher-Yates
+            drawOrder() {
+                const validPlayers = this.players.filter(p => p !== '');
+                if (validPlayers.length < 12) {
+                    alert("Cadastre os 12 participantes antes de sortear!");
+                    return;
+                }
+
+                let shuffled = [...validPlayers];
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+
+                this.order = shuffled;
+                localStorage.setItem('sf_order', JSON.stringify(this.order));
+                this.renderDrawOrder();
+            }
+
+            renderDrawOrder() {
+                const list = document.getElementById('drawList');
+                list.innerHTML = '';
+                this.order.forEach(p => {
+                    const li = document.createElement('li');
+                    li.textContent = p;
+                    list.appendChild(li);
+                });
+            }
+
+            updateSelectOptions() {
+                const p1Select = document.getElementById('player1Select');
+                const p2Select = document.getElementById('player2Select');
+                
+                p1Select.innerHTML = '<option value="">Desafiante...</option>';
+                p2Select.innerHTML = '<option value="">Desafiado...</option>';
+
+                const validPlayers = this.players.filter(p => p !== '');
+                validPlayers.forEach(p => {
+                    p1Select.innerHTML += `<option value="${p}">${p}</option>`;
+                    p2Select.innerHTML += `<option value="${p}">${p}</option>`;
+                });
+            }
+
+            registerMatch() {
+                const round = document.getElementById('roundSelect').value;
+                const p1 = document.getElementById('player1Select').value;
+                const p2 = document.getElementById('player2Select').value;
+
+                if (!p1 || !p2) {
+                    alert("Selecione os dois jogadores!");
+                    return;
+                }
+                if (p1 === p2) {
+                    alert("Um jogador não pode desafiar a si mesmo!");
+                    return;
+                }
+
+                // Verifica se já atingiu 6 partidas (12 jogadores = 6 lutas por rodada)
+                if (this.matches[round].length >= 6) {
+                    alert(`A Rodada ${round} já tem 6 partidas registradas!`);
+                    return;
+                }
+
+                // Verifica se algum dos jogadores já está lutando nesta rodada
+                const alreadyPlaying = this.matches[round].some(m => m.p1 === p1 || m.p2 === p1 || m.p1 === p2 || m.p2 === p2);
+                if (alreadyPlaying) {
+                    alert("Um ou ambos os jogadores já estão registrados em um desafio nesta rodada!");
+                    return;
+                }
+
+                this.matches[round].push({ p1, p2 });
+                localStorage.setItem('sf_matches', JSON.stringify(this.matches));
+                
+                // Limpa seletores
+                document.getElementById('player1Select').value = "";
+                document.getElementById('player2Select').value = "";
+
+                this.renderMatches();
+            }
+
+            removeMatch(round, index) {
+                this.matches[round].splice(index, 1);
+                localStorage.setItem('sf_matches', JSON.stringify(this.matches));
+                this.renderMatches();
+            }
+
+            renderMatches() {
+                const grid = document.getElementById('roundsGrid');
+                grid.innerHTML = '';
+
+                for (let i = 1; i <= 4; i++) {
+                    const card = document.createElement('div');
+                    card.className = 'round-card';
+                    card.innerHTML = `<h3>Rodada ${i} (${this.matches[i].length}/6)</h3>`;
+                    
+                    if (this.matches[i].length === 0) {
+                        card.innerHTML += `<p style="text-align:center; color:#555; font-size:0.9em;">Nenhum desafio</p>`;
+                    } else {
+                        this.matches[i].forEach((match, index) => {
+                            const item = document.createElement('div');
+                            item.className = 'match-item';
+                            item.innerHTML = `
+                                <span>${match.p1} <span style="color:var(--primary); font-size:0.8em; margin:0 5px;">VS</span> ${match.p2}</span>
+                                <span style="color:red; cursor:pointer; font-weight:bold;" onclick="app.removeMatch(${i}, ${index})">X</span>
+                            `;
+                            card.appendChild(item);
+                        });
+                    }
+                    grid.appendChild(card);
+                }
+            }
+
+            clearAllData() {
+                if(confirm("Tem certeza? Isso apagará todos os jogadores, sorteios e rodadas gravadas.")) {
+                    localStorage.removeItem('sf_players');
+                    localStorage.removeItem('sf_order');
+                    localStorage.removeItem('sf_matches');
+                    location.reload();
+                }
+            }
+        }
+
+        // Instancia a classe quando a janela carregar
+        let app;
+        window.onload = () => {
+            app = new TournamentManager();
+        };
+    </script>
+</body>
+</html>
